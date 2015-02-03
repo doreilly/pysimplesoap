@@ -320,25 +320,26 @@ class SoapClient(object):
 
     def get_operation(self, method):
         # try to find operation in wsdl file
+        candidates = []
         soap_ver = self.__soap_ns.startswith('soap12') and 'soap12' or 'soap11'
-        if not self.service_port:
-            for service_name, service in self.services.items():
-                for port_name, port in [port for port in service['ports'].items()]:
-                    if port['soap_ver'] == soap_ver:
-                        self.service_port = service_name, port_name
-                        break
-                else:
-                    raise RuntimeError('Cannot determine service in WSDL: '
-                                       'SOAP version: %s' % soap_ver)
-        else:
-            port = self.services[self.service_port[0]]['ports'][self.service_port[1]]
-        if not self.location:
-            self.location = port['location']
-        operation = port['operations'].get(method)
-        if not operation:
+
+        for service_name, service in self.services.items():
+            for port_name, port in [port for port in service['ports'].items()]:
+                operation = port['operations'].get(method)
+                if operation and port['soap_ver'] == soap_ver:
+                    candidates.append((operation, port['location']))
+        
+        if not candidates:
+            raise RuntimeError('Cannot determine service in WSDL: %s'
+                                   'SOAP version: %s' % (method, soap_ver))
+        
+        try:
+            operation, self.location = candidates[0]
+        except IndexError:
             raise RuntimeError('Operation %s not found in WSDL: '
                                'Service/Port Type: %s' %
-                               (method, self.service_port))
+                               (method, port_name))
+        
         return operation
 
     def wsdl_call(self, method, *args, **kwargs):
