@@ -112,18 +112,18 @@ class SoapClient(object):
             log.setLevel(level)
 
         if not soap_ns and not ns:
-            self.__soap_ns = 'soap'  # 1.1
+            self._soap_ns = 'soap'  # 1.1
         elif not soap_ns and ns:
-            self.__soap_ns = 'soapenv'  # 1.2
+            self._soap_ns = 'soapenv'  # 1.2
         else:
-            self.__soap_ns = soap_ns
+            self._soap_ns = soap_ns
 
         # SOAP Server (special cases like oracle, jbossas6 or jetty)
-        self.__soap_server = soap_server
+        self._soap_server = soap_server
 
         # SOAP Header support
-        self.__headers = {}         # general headers
-        self.__call_headers = None  # Struct to be marshalled for RPC Call
+        self._headers = {}         # general headers
+        self._call_headers = None  # Struct to be marshalled for RPC Call
 
         # check if the Certification Authority Cert is a string and store it
         if cacert and cacert.startswith('-----BEGIN CERTIFICATE-----'):
@@ -147,9 +147,9 @@ class SoapClient(object):
 
 
         # namespace prefix, None to use xmlns attribute or False to not use it:
-        self.__ns = ns
+        self._ns = ns
         if not ns:
-            self.__xml = """<?xml version="1.0" encoding="UTF-8"?>
+            self._xml = """<?xml version="1.0" encoding="UTF-8"?>
 <%(soap_ns)s:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xmlns:xsd="http://www.w3.org/2001/XMLSchema"
     xmlns:%(soap_ns)s="%(soap_uri)s">
@@ -160,7 +160,7 @@ class SoapClient(object):
 </%(soap_ns)s:Body>
 </%(soap_ns)s:Envelope>"""
         else:
-            self.__xml = """<?xml version="1.0" encoding="UTF-8"?>
+            self._xml = """<?xml version="1.0" encoding="UTF-8"?>
 <%(soap_ns)s:Envelope xmlns:%(soap_ns)s="%(soap_uri)s" xmlns:%(ns)s="%(namespace)s">
 <%(soap_ns)s:Header/>
 <%(soap_ns)s:Body>
@@ -189,14 +189,14 @@ class SoapClient(object):
         """
         #TODO: method != input_message
         # Basic SOAP request:
-        soap_uri = soap_namespaces[self.__soap_ns]
-        xml = self.__xml % dict(method=method,              # method tag name
+        soap_uri = soap_namespaces[self._soap_ns]
+        xml = self._xml % dict(method=method,              # method tag name
                                 namespace=self.namespace,   # method ns uri
-                                ns=self.__ns,               # method ns prefix
-                                soap_ns=self.__soap_ns,     # soap prefix & uri
+                                ns=self._ns,               # method ns prefix
+                                soap_ns=self._soap_ns,     # soap prefix & uri
                                 soap_uri=soap_uri)
-        request = SimpleXMLElement(xml, namespace=self.__ns and self.namespace,
-                                        prefix=self.__ns)
+        request = SimpleXMLElement(xml, namespace=self._ns and self.namespace,
+                                        prefix=self._ns)
 
         request_headers = kwargs.pop('headers', None)
 
@@ -213,31 +213,31 @@ class SoapClient(object):
             body.import_node(parameters[0])
         elif parameters:
             # marshall parameters:
-            use_ns = None if (self.__soap_server == "jetty" or self.qualified is False) else True
+            use_ns = None if (self._soap_server == "jetty" or self.qualified is False) else True
             for k, v in parameters:  # dict: tag=valor
                 if hasattr(v, "namespaces") and use_ns:
                     ns = v.namespaces.get(None, True)
                 else:
                     ns = use_ns
                 getattr(request, method).marshall(k, v, ns=ns)
-        elif self.__soap_server in ('jbossas6',):
+        elif self._soap_server in ('jbossas6',):
             # JBossAS-6 requires no empty method parameters!
             delattr(request("Body", ns=list(soap_namespaces.values()),), method)
 
         # construct header and parameters (if not wsdl given) except wsse
-        if self.__headers and not self.services:
-            self.__call_headers = dict([(k, v) for k, v in self.__headers.items()
+        if self._headers and not self.services:
+            self._call_headers = dict([(k, v) for k, v in self._headers.items()
                                         if not k.startswith('wsse:')])
         # always extract WS Security header and send it (backward compatible)
-        if 'wsse:Security' in self.__headers and not self.plugins:
+        if 'wsse:Security' in self._headers and not self.plugins:
             warnings.warn("Replace wsse:Security with UsernameToken plugin",
                           DeprecationWarning)
             self.plugins.append(UsernameToken())
 
-        if self.__call_headers:
+        if self._call_headers:
             header = request('Header', ns=list(soap_namespaces.values()),)
-            for k, v in self.__call_headers.items():
-                ##if not self.__ns:
+            for k, v in self._call_headers.items():
+                ##if not self._ns:
                 ##    header['xmlns']
                 if isinstance(v, SimpleXMLElement):
                     # allows a SimpleXMLElement to be constructed and inserted
@@ -245,7 +245,7 @@ class SoapClient(object):
                     # in dict key names
                     header.import_node(v)
                 else:
-                    header.marshall(k, v, ns=self.__ns, add_children_ns=False)
+                    header.marshall(k, v, ns=self._ns, add_children_ns=False)
         if request_headers:
             header = request('Header', ns=list(soap_namespaces.values()),)
             for subheader in request_headers.children():
@@ -254,12 +254,12 @@ class SoapClient(object):
         # do pre-processing using plugins (i.e. WSSE signing)
         for plugin in self.plugins:
             plugin.preprocess(self, request, method, args, kwargs,
-                                    self.__headers, soap_uri)
+                                    self._headers, soap_uri)
 
         self.xml_request = request.as_xml()
         self.xml_response = self.send(method, self.xml_request)
         response = SimpleXMLElement(self.xml_response, namespace=self.namespace,
-                                    jetty=self.__soap_server in ('jetty',))
+                                    jetty=self._soap_server in ('jetty',))
         if self.exceptions and response("Fault", ns=list(soap_namespaces.values()), error=False):
             detailXml = response("detail", ns=list(soap_namespaces.values()), error=False)
             detail = None
@@ -276,7 +276,7 @@ class SoapClient(object):
         # do post-processing using plugins (i.e. WSSE signature verification)
         for plugin in self.plugins:
             plugin.postprocess(self, response, method, args, kwargs,
-                                     self.__headers, soap_uri)
+                                     self._headers, soap_uri)
 
         return response
 
@@ -321,7 +321,7 @@ class SoapClient(object):
     def get_operation(self, method):
         # try to find operation in wsdl file
         candidates = []
-        soap_ver = self.__soap_ns.startswith('soap12') and 'soap12' or 'soap11'
+        soap_ver = self._soap_ns.startswith('soap12') and 'soap12' or 'soap11'
 
         for service_name, service in self.services.items():
             for port_name, port in [port for port in service['ports'].items()]:
@@ -348,7 +348,7 @@ class SoapClient(object):
 
     def wsdl_call_with_args(self, method, args, kwargs):
         """Pre and post process SOAP call, input and output parameters using WSDL"""
-        soap_uri = soap_namespaces[self.__soap_ns]
+        soap_uri = soap_namespaces[self._soap_ns]
         operation = self.get_operation(method)
 
         # get i/o type declarations:
@@ -364,7 +364,7 @@ class SoapClient(object):
 
         # construct header and parameters
         if header:
-            self.__call_headers = sort_dict(header, self.__headers)
+            self._call_headers = sort_dict(header, self._headers)
         method, params = self.wsdl_call_get_params(method, input, args, kwargs)
 
         # call remote procedure
@@ -412,7 +412,7 @@ class SoapClient(object):
                     v.namespaces[None] = root_ns
                 params.append((k, v))
             # TODO: check style and document attributes
-            if self.__soap_server in ('axis', ):
+            if self._soap_server in ('axis', ):
                 # use the operation name
                 method = method
             else:
@@ -594,7 +594,7 @@ class SoapClient(object):
             schemas = types('schema', ns=self.xsd_uri, error=False)
             for schema in schemas or []:
                 preprocess_schema(schema, imported_schemas, elements, self.xsd_uri,
-                                  self.__soap_server, self.http, cache,
+                                  self._soap_server, self.http, cache,
                                   force_download, self.wsdl_basedir,
                                   global_namespaces=global_namespaces)
 
@@ -856,7 +856,7 @@ class SoapClient(object):
 
     def __setitem__(self, item, value):
         """Set SOAP Header value - this header will be sent for every request."""
-        self.__headers[item] = value
+        self._headers[item] = value
 
     def close(self):
         """Finish the connection and remove temp files"""
