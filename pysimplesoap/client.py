@@ -324,16 +324,24 @@ class SoapClient(object):
         # try to find operation in wsdl file
         candidates = []
         soap_ver = self._soap_ns.startswith('soap12') and 'soap12' or 'soap11'
-
+        target_port = None
+        
+        if '.' in method:
+            target_port, method_name = method.split('.', 1)
+        else:
+            method_name = method
+        
         for service_name, service in self.services.items():
             for port_name, port in [port for port in service['ports'].items()]:
-                operation = port['operations'].get(method)
+                if target_port is not None and port_name != target_port:
+                    continue
+                operation = port['operations'].get(method_name)
                 if operation and port['soap_ver'] == soap_ver:
                     candidates.append((operation, port['location']))
         
         if not candidates:
-            raise RuntimeError('Cannot determine service in WSDL: %s'
-                                   'SOAP version: %s' % (method, soap_ver))
+            raise RuntimeError('Cannot determine service in WSDL: %s '
+                               'SOAP version: %s' % (method, soap_ver))
         
         try:
             operation, self.location = candidates[0]
